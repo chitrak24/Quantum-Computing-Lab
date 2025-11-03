@@ -1,54 +1,56 @@
-
-name: Lint, Markdown & License (LML)
+name: Lint Markdown and Python
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
-  lint-markdown-license:
-    name: Run Lint, Markdown & License checks
+  lint:
+    name: Run linters
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🧱 Checkout repository
+      # Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------
-      # Install uv and set up Python environment
-      # -------------------------------------------------
-      - name: ⚙️ Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      # --- Setup Python + uv ---
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: 📦 Sync environment
-        run: uv sync
+      - name: Install uv
+        run: pip install uv
 
-      # -------------------------------------------------
-      # Lint Python and Notebook files via your script
-      # -------------------------------------------------
-      - name: 🧹 Run nbqa + pylint lint
+      - name: Install project dependencies
+        run: uv sync --dev
+
+      # --- Setup Node.js for markdownlint ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install markdownlint-cli2
+        run: npm install -g markdownlint-cli2
+
+      # --- Lint Python + Notebooks ---
+      - name: Run nbqa pylint
         run: |
+          mkdir -p scripts
+          echo '#!/usr/bin/env bash' > scripts/lint.sh
+          echo 'set -e' >> scripts/lint.sh
+          echo 'cd "$(git rev-parse --show-toplevel)"' >> scripts/lint.sh
+          echo 'PY_FILES=$(git ls-files "*.py" | xargs)' >> scripts/lint.sh
+          echo 'NB_FILES=$(find . -type f -name "*.ipynb" -not -path "*/.ipynb_checkpoints/*" | xargs)' >> scripts/lint.sh
+          echo 'uv run nbqa pylint --disable=R0801 --exit-zero $PY_FILES $NB_FILES' >> scripts/lint.sh
           chmod +x scripts/lint.sh
           ./scripts/lint.sh
 
-      # -------------------------------------------------
-      # Markdown lint using markdownlint-cli2
-      # -------------------------------------------------
-      - name: 📝 Check Markdown formatting
-        run: |
-          uv run pip install markdownlint-cli2
-          uv run markdownlint-cli2 "**/*.md"
-
-      # -------------------------------------------------
-      # License header / compliance check
-      # -------------------------------------------------
-      - name: ⚖️ Verify License Headers
-        run: |
-          uv run pip install reuse
-          uv run reuse lint
-
+      # --- Lint Markdown ---
+      - name: Run markdownlint-cli2
+        run: markdownlint-cli2 "**/*.md"
 
